@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
-<meta http-equiv="Expires" content="0">  
+<meta http-equiv="Expires" content="0">
 <title>家族予定回答フォーム</title>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <style>
@@ -115,11 +115,20 @@ function tokyoNowInfo() {
   return { dateKey: obj.year + '-' + obj.month + '-' + obj.day, hour: hour, minute: Number(obj.minute) };
 }
 
-// dateKeyが指す日のAM6:00を過ぎている(=回答受付終了)かどうか
+// dateKey(yyyy-MM-dd)に対して days日を加算した日付キーを返す
+function addDaysToKey(dateKey, days) {
+  var p = dateKey.split('-');
+  var y = Number(p[0]), m = Number(p[1]), d = Number(p[2]);
+  var dt = new Date(Date.UTC(y, m - 1, d) + days * 86400000);
+  return formatDateKey(dt);
+}
+
+// dateKeyの回答は、前日21:00のsendSummary()に間に合わせるため前日20:30が締切
 function isLocked(dateKey) {
   var now = tokyoNowInfo();
-  if (now.dateKey > dateKey) return true;
-  if (now.dateKey === dateKey && now.hour >= 6) return true;
+  var lockDateKey = addDaysToKey(dateKey, -1);
+  if (now.dateKey > lockDateKey) return true;
+  if (now.dateKey === lockDateKey && (now.hour > 20 || (now.hour === 20 && now.minute >= 30))) return true;
   return false;
 }
 
@@ -195,7 +204,7 @@ function sanitizeText(s) {
   return (s || '').replace(/[|\n\r]/g, ' ').trim();
 }
 
-// AM6:00を過ぎた日付ブロックの入力を無効化し、注意書きを表示する
+// 前日20:30の締切を過ぎた日付ブロックの入力を無効化し、注意書きを表示する
 function applyLocks() {
   DATE_KEYS.forEach(function (dateKey) {
     if (!isLocked(dateKey)) return;
@@ -206,7 +215,7 @@ function applyLocks() {
     for (var i = 0; i < inputs.length; i++) { inputs[i].disabled = true; }
     var notice = document.createElement('div');
     notice.className = 'lockNotice';
-    notice.textContent = '回答受付は終了しました（AM6:00を過ぎました）';
+    notice.textContent = '回答受付は終了しました（前日20:30の締切を過ぎました）';
     block.insertBefore(notice, block.children[1]);
   });
 }
