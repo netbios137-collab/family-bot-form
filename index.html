@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>家族予定回答フォーム</title>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<style>
+body{font-family:sans-serif;margin:0;padding:12px;background:#f7f7f7;}
+.date-block{background:#fff;border-radius:8px;padding:12px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.1);}
+h2{margin:0 0 8px;font-size:16px;}
+.field{margin-bottom:10px;}
+.label{font-weight:bold;font-size:13px;margin-bottom:4px;}
+.options{display:flex;flex-wrap:wrap;gap:10px;}
+.opt{font-size:14px;display:flex;align-items:center;gap:4px;}
+#submitBtn{width:100%;padding:14px;font-size:16px;background:#06c755;color:#fff;border:none;border-radius:8px;margin-top:8px;}
+#submitBtn:disabled{background:#aaa;}
+</style>
+</head>
+<body>
+<div id="form"></div>
+<button id="submitBtn" onclick="submitAnswers()">回答を送信する</button>
+
+<script>
+var LIFF_ID = '2010924242-neJCBkBN';
+
+var CATEGORY_DEFS = {
+  '車': {
+    questionText: '車を使いますか？',
+    options: [
+      { label: '赤', value: 'はい(赤)' },
+      { label: '橙', value: 'はい(オレンジ)' },
+      { label: 'なし', value: 'いいえ' }
+    ]
+  },
+  '予定': {
+    questionText: '予定を教えてください',
+    options: [
+      { label: '出社', value: '出社' },
+      { label: '学校', value: '学校' },
+      { label: 'バイト', value: 'バイト' },
+      { label: '在宅', value: '在宅' }
+    ]
+  },
+  '昼食': {
+    questionText: 'お昼ご飯はどうしますか？',
+    options: [
+      { label: '家', value: '家' },
+      { label: '弁当', value: '弁当' },
+      { label: 'レスト', value: 'レスト' },
+      { label: '不要', value: '不要' }
+    ]
+  },
+  '夕食': {
+    questionText: '夜ご飯はどうしますか？',
+    options: [
+      { label: '一緒', value: '一緒に食べる' },
+      { label: '個別', value: '遅いので個別に食べる' },
+      { label: '不要', value: '不要' }
+    ]
+  }
+};
+
+function tokyoTodayParts() {
+  var fmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit' });
+  var parts = fmt.formatToParts(new Date());
+  var obj = {};
+  parts.forEach(function (p) { if (p.type !== 'literal') obj[p.type] = p.value; });
+  return { y: Number(obj.year), m: Number(obj.month), d: Number(obj.day) };
+}
+
+function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+function formatDateKey(dt) {
+  return dt.getUTCFullYear() + '-' + pad2(dt.getUTCMonth() + 1) + '-' + pad2(dt.getUTCDate());
+}
+
+function formatDateLabel(dateKey) {
+  var p = dateKey.split('-');
+  var y = Number(p[0]), m = Number(p[1]), d = Number(p[2]);
+  var wdNames = ['日', '月', '火', '水', '木', '金', '土'];
+  var dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  return m + '/' + d + '(' + wdNames[dow] + ')';
+}
+
+function targetDates() {
+  var today = tokyoTodayParts();
+  var base = Date.UTC(today.y, today.m - 1, today.d);
+  var keys = [];
+  for (var i = 1; i <= 3; i++) {
+    keys.push(formatDateKey(new Date(base + i * 86400000)));
+  }
+  return keys;
+}
+
+var DATE_KEYS = targetDates();
+var CATEGORIES = Object.keys(CATEGORY_DEFS);
+
+function renderForm() {
+  var html = '';
+  DATE_KEYS.forEach(function (dateKey) {
+    var label = formatDateLabel(dateKey);
+    html += '<section class="date-block"><h2>' + label + '</h2>';
+    CATEGORIES.forEach(function (category) {
+      var def = CATEGORY_DEFS[category];
+      var groupName = dateKey + '_' + category;
+      html += '<div class="field"><div class="label">' + def.questionText + '</div><div class="options">';
+      def.options.forEach(function (o, idx) {
+        var id = groupName + '_' + idx;
+        var onchange = category === '予定'
+          ? ' onchange="onScheduleChange(\'' + dateKey + '\', this.value)"'
+          : '';
+        html += '<label class="opt"><input type="radio" name="' + groupName + '" value="' + o.value + '" id="' + id + '"' + onchange + '> ' + o.label + '</label>';
+      });
+      html += '</div></div>';
+    });
+    html += '<div class="field baito" id="baito_' + dateKey + '" style="display:none;">' +
+      '<div class="label">バイトの時間</div>' +
+      '<div class="options">開始 <input type="time" id="' + dateKey + '_baitoStart"> 終了 <input type="time" id="' + dateKey + '_baitoEnd"></div>' +
+      '</div>';
+    html += '</section>';
+  });
+  document.getElementById('form').innerHTML = html;
+}
+
+function onScheduleChange(dateKey, value) {
+  document.getElementById('baito_' + dateKey).style.display = (value === 'バイト') ? 'block' : 'none';
+}
+
+function selectedValue(name) {
+  var els = document.getElementsByName(name);
+  for (var i = 0; i < els.length; i++) { if (els[i].checked) return els[i].value; }
+  return '';
+}
+
+function submitAnswers() {
+  var lines = [];
+  DATE_KEYS.forEach(function (dateKey) {
+    var parts = [];
+    CATEGORIES.forEach(function (cat) {
+      var v = selectedValue(dateKey + '_' + cat);
+      if (v) parts.push(cat + ':' + v);
+      if (cat === '予定' && v === 'バイト') {
+        var s = document.getElementById(dateKey + '_baitoStart').value;
+        var en = document.getElementById(dateKey + '_baitoEnd').value;
+        if (s) parts.push('バイト開始:' + s);
+        if (en) parts.push('バイト終了:' + en);
+      }
+    });
+    if (parts.length > 0) lines.push('ANSWER|' + dateKey + '|' + parts.join('|'));
+  });
+  if (lines.length === 0) { alert('少なくとも1つ選択してください'); return; }
+  var text = lines.join('\n');
+  var btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.innerText = '送信中...';
+  liff.sendMessages([{ type: 'text', text: text }]).then(function () {
+    liff.closeWindow();
+  }).catch(function (err) {
+    alert('送信に失敗しました: ' + err);
+    btn.disabled = false;
+    btn.innerText = '回答を送信する';
+  });
+}
+
+renderForm();
+liff.init({ liffId: LIFF_ID }).then(function () {
+  if (!liff.isLoggedIn()) { liff.login(); }
+}).catch(function (err) {
+  alert('LIFF初期化に失敗しました: ' + err);
+});
+</script>
+</body>
+</html>
