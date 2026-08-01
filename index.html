@@ -8,11 +8,15 @@
 <style>
 body{font-family:sans-serif;margin:0;padding:12px;background:#f7f7f7;}
 .date-block{background:#fff;border-radius:8px;padding:12px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.1);}
+.date-block.locked{opacity:0.5;}
 h2{margin:0 0 8px;font-size:16px;}
 .field{margin-bottom:10px;}
 .label{font-weight:bold;font-size:13px;margin-bottom:4px;}
-.options{display:flex;flex-wrap:wrap;gap:10px;}
+.hint{font-weight:normal;font-size:11px;color:#888;}
+.options{display:flex;flex-wrap:wrap;gap:10px;align-items:center;}
 .opt{font-size:14px;display:flex;align-items:center;gap:4px;}
+input[type="text"]{width:100%;padding:6px;box-sizing:border-box;font-size:14px;}
+.lockNotice{color:#c0392b;font-size:12px;font-weight:bold;margin-bottom:8px;}
 #submitBtn{width:100%;padding:14px;font-size:16px;background:#06c755;color:#fff;border:none;border-radius:8px;margin-top:8px;}
 #submitBtn:disabled{background:#aaa;}
 </style>
@@ -30,6 +34,7 @@ var CATEGORY_DEFS = {
     options: [
       { label: '赤', value: 'はい(赤)' },
       { label: '橙', value: 'はい(オレンジ)' },
+      { label: 'どちらでも', value: 'はい(赤・オレンジどちらでも可)' },
       { label: 'なし', value: 'いいえ' }
     ]
   },
@@ -39,7 +44,8 @@ var CATEGORY_DEFS = {
       { label: '出社', value: '出社' },
       { label: '学校', value: '学校' },
       { label: 'バイト', value: 'バイト' },
-      { label: '在宅', value: '在宅' }
+      { label: '在宅', value: '在宅' },
+      { label: 'その他', value: 'その他' }
     ]
   },
   '昼食': {
@@ -93,6 +99,27 @@ function targetDates() {
   return keys;
 }
 
+// 現在のAsia/Tokyo時刻(日付+時+分)を取得する
+function tokyoNowInfo() {
+  var fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false
+  });
+  var parts = fmt.formatToParts(new Date());
+  var obj = {};
+  parts.forEach(function (p) { if (p.type !== 'literal') obj[p.type] = p.value; });
+  var hour = obj.hour === '24' ? 0 : Number(obj.hour);
+  return { dateKey: obj.year + '-' + obj.month + '-' + obj.day, hour: hour, minute: Number(obj.minute) };
+}
+
+// dateKeyが指す日のAM6:00を過ぎている(=回答受付終了)かどうか
+function isLocked(dateKey) {
+  var now = tokyoNowInfo();
+  if (now.dateKey > dateKey) return true;
+  if (now.dateKey === dateKey && now.hour >= 6) return true;
+  return false;
+}
+
 var DATE_KEYS = targetDates();
 var CATEGORIES = Object.keys(CATEGORY_DEFS);
 
@@ -100,31 +127,59 @@ function renderForm() {
   var html = '';
   DATE_KEYS.forEach(function (dateKey) {
     var label = formatDateLabel(dateKey);
-    html += '<section class="date-block"><h2>' + label + '</h2>';
+    var categoryBlocks = '';
     CATEGORIES.forEach(function (category) {
       var def = CATEGORY_DEFS[category];
       var groupName = dateKey + '_' + category;
-      html += '<div class="field"><div class="label">' + def.questionText + '</div><div class="options">';
+      categoryBlocks += '<div class="field"><div class="label">' + def.questionText + '</div><div class="options">';
       def.options.forEach(function (o, idx) {
         var id = groupName + '_' + idx;
         var onchange = category === '予定'
           ? ' onchange="onScheduleChange(\'' + dateKey + '\', this.value)"'
           : '';
-        html += '<label class="opt"><input type="radio" name="' + groupName + '" value="' + o.value + '" id="' + id + '"' + onchange + '> ' + o.label + '</label>';
+        categoryBlocks += '<label class="opt"><input type="radio" name="' + groupName + '" value="' + o.value + '" id="' + id + '"' + onchange + '> ' + o.label + '</label>';
       });
-      html += '</div></div>';
+      categoryBlocks += '</div></div>';
     });
-    html += '<div class="field baito" id="baito_' + dateKey + '" style="display:none;">' +
-      '<div class="label">バイトの時間</div>' +
-      '<div class="options">開始 <input type="time" id="' + dateKey + '_baitoStart"> 終了 <input type="time" id="' + dateKey + '_baitoEnd"></div>' +
+
+    var baitoBlock =
+      '<div class="field" id="baito_' + dateKey + '" style="display:none;">' +
+      '<div class="label">バイト①</div>' +
+      '<div class="options">開始 <input type="time" id="' + dateKey + '_baito1Start"> 終了 <input type="time" id="' + dateKey + '_baito1End"></div>' +
+      '<div class="label">バイト②<span class="hint">（ない場合は空欄でよい）</span></div>' +
+      '<div class="options">開始 <input type="time" id="' + dateKey + '_baito2Start"> 終了 <input type="time" id="' + dateKey + '_baito2End"></div>' +
       '</div>';
-    html += '</section>';
+
+    var otherBlock =
+      '<div class="field" id="otherDetail_' + dateKey + '" style="display:none;">' +
+      '<div class="label">予定の詳細</div>' +
+      '<input type="text" id="' + dateKey + '_scheduleOther" placeholder="具体的な予定を入力">' +
+      '</div>';
+
+    var pickupBlock =
+      '<div class="field">' +
+      '<div class="label">送迎の有無</div>' +
+      '<div class="options">' +
+      '<label class="opt"><input type="checkbox" id="' + dateKey + '_dropoffCheck" onchange="onPickupToggle(\'' + dateKey + '\', \'dropoff\', this.checked)"> 送り</label>' +
+      '<label class="opt"><input type="checkbox" id="' + dateKey + '_pickupCheck" onchange="onPickupToggle(\'' + dateKey + '\', \'pickup\', this.checked)"> 迎え</label>' +
+      '</div>' +
+      '<div class="options" id="' + dateKey + '_dropoffTimeWrap" style="display:none;">送り時刻 <input type="time" id="' + dateKey + '_dropoffTimeInput"></div>' +
+      '<div class="options" id="' + dateKey + '_pickupTimeWrap" style="display:none;">迎え時刻 <input type="time" id="' + dateKey + '_pickupTimeInput"></div>' +
+      '</div>';
+
+    html += '<section class="date-block" id="dateBlock_' + dateKey + '"><h2>' + label + '</h2>' +
+      categoryBlocks + baitoBlock + otherBlock + pickupBlock + '</section>';
   });
   document.getElementById('form').innerHTML = html;
 }
 
 function onScheduleChange(dateKey, value) {
   document.getElementById('baito_' + dateKey).style.display = (value === 'バイト') ? 'block' : 'none';
+  document.getElementById('otherDetail_' + dateKey).style.display = (value === 'その他') ? 'block' : 'none';
+}
+
+function onPickupToggle(dateKey, kind, checked) {
+  document.getElementById(dateKey + '_' + kind + 'TimeWrap').style.display = checked ? 'block' : 'none';
 }
 
 function selectedValue(name) {
@@ -133,20 +188,59 @@ function selectedValue(name) {
   return '';
 }
 
+function sanitizeText(s) {
+  return (s || '').replace(/[|\n\r]/g, ' ').trim();
+}
+
+// AM6:00を過ぎた日付ブロックの入力を無効化し、注意書きを表示する
+function applyLocks() {
+  DATE_KEYS.forEach(function (dateKey) {
+    if (!isLocked(dateKey)) return;
+    var block = document.getElementById('dateBlock_' + dateKey);
+    if (!block || block.classList.contains('locked')) return;
+    block.classList.add('locked');
+    var inputs = block.querySelectorAll('input');
+    for (var i = 0; i < inputs.length; i++) { inputs[i].disabled = true; }
+    var notice = document.createElement('div');
+    notice.className = 'lockNotice';
+    notice.textContent = '回答受付は終了しました（AM6:00を過ぎました）';
+    block.insertBefore(notice, block.children[1]);
+  });
+}
+
 function submitAnswers() {
   var lines = [];
   DATE_KEYS.forEach(function (dateKey) {
+    if (isLocked(dateKey)) return;
     var parts = [];
     CATEGORIES.forEach(function (cat) {
       var v = selectedValue(dateKey + '_' + cat);
       if (v) parts.push(cat + ':' + v);
       if (cat === '予定' && v === 'バイト') {
-        var s = document.getElementById(dateKey + '_baitoStart').value;
-        var en = document.getElementById(dateKey + '_baitoEnd').value;
-        if (s) parts.push('バイト開始:' + s);
-        if (en) parts.push('バイト終了:' + en);
+        var s1 = document.getElementById(dateKey + '_baito1Start').value;
+        var e1 = document.getElementById(dateKey + '_baito1End').value;
+        var s2 = document.getElementById(dateKey + '_baito2Start').value;
+        var e2 = document.getElementById(dateKey + '_baito2End').value;
+        if (s1) parts.push('バイト1開始:' + s1);
+        if (e1) parts.push('バイト1終了:' + e1);
+        if (s2) parts.push('バイト2開始:' + s2);
+        if (e2) parts.push('バイト2終了:' + e2);
+      }
+      if (cat === '予定' && v === 'その他') {
+        var detail = sanitizeText(document.getElementById(dateKey + '_scheduleOther').value);
+        if (detail) parts.push('予定詳細:' + detail);
       }
     });
+    var dropoffCheck = document.getElementById(dateKey + '_dropoffCheck');
+    var pickupCheck = document.getElementById(dateKey + '_pickupCheck');
+    if (dropoffCheck && dropoffCheck.checked) {
+      var dt = document.getElementById(dateKey + '_dropoffTimeInput').value;
+      if (dt) parts.push('送り:' + dt);
+    }
+    if (pickupCheck && pickupCheck.checked) {
+      var pt = document.getElementById(dateKey + '_pickupTimeInput').value;
+      if (pt) parts.push('迎え:' + pt);
+    }
     if (parts.length > 0) lines.push('ANSWER|' + dateKey + '|' + parts.join('|'));
   });
   if (lines.length === 0) { alert('少なくとも1つ選択してください'); return; }
@@ -164,6 +258,9 @@ function submitAnswers() {
 }
 
 renderForm();
+applyLocks();
+setInterval(applyLocks, 60000);
+
 liff.init({ liffId: LIFF_ID }).then(function () {
   if (!liff.isLoggedIn()) { liff.login(); }
 }).catch(function (err) {
