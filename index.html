@@ -97,7 +97,7 @@ function targetDates() {
   var today = tokyoTodayParts();
   var base = Date.UTC(today.y, today.m - 1, today.d);
   var keys = [];
-  for (var i = 1; i <= 3; i++) {
+  for (var i = 1; i <= 4; i++) {
     keys.push(formatDateKey(new Date(base + i * 86400000)));
   }
   return keys;
