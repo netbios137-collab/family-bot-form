@@ -9,18 +9,19 @@
 <title>家族予定回答フォーム</title>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <style>
-body{font-family:sans-serif;margin:0;padding:12px;background:#f7f7f7;}
+body{font-family:sans-serif;margin:0;padding:12px;background:#f7f7f7;font-size:16px;}
 .date-block{background:#fff;border-radius:8px;padding:12px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.1);}
 .date-block.locked{opacity:0.5;}
-h2{margin:0 0 8px;font-size:16px;}
+h2{margin:0 0 8px;font-size:19px;}
 .field{margin-bottom:10px;}
-.label{font-weight:bold;font-size:13px;margin-bottom:4px;}
-.hint{font-weight:normal;font-size:11px;color:#888;}
+.label{font-weight:bold;font-size:16px;margin-bottom:4px;}
+.hint{font-weight:normal;font-size:13px;color:#888;}
 .options{display:flex;flex-wrap:wrap;gap:10px;align-items:center;}
-.opt{font-size:14px;display:flex;align-items:center;gap:4px;}
-input[type="text"]{width:100%;padding:6px;box-sizing:border-box;font-size:14px;}
-.lockNotice{color:#c0392b;font-size:12px;font-weight:bold;margin-bottom:8px;}
-#submitBtn{width:100%;padding:14px;font-size:16px;background:#06c755;color:#fff;border:none;border-radius:8px;margin-top:8px;}
+.opt{font-size:17px;display:flex;align-items:center;gap:4px;}
+input[type="text"],input[type="time"]{padding:8px;box-sizing:border-box;font-size:16px;}
+input[type="text"]{width:100%;}
+.lockNotice{color:#c0392b;font-size:13px;font-weight:bold;margin-bottom:8px;}
+#submitBtn{width:100%;padding:14px;font-size:18px;background:#06c755;color:#fff;border:none;border-radius:8px;margin-top:8px;}
 #submitBtn:disabled{background:#aaa;}
 </style>
 </head>
@@ -139,20 +140,6 @@ function renderForm() {
   var html = '';
   DATE_KEYS.forEach(function (dateKey) {
     var label = formatDateLabel(dateKey);
-    var categoryBlocks = '';
-    CATEGORIES.forEach(function (category) {
-      var def = CATEGORY_DEFS[category];
-      var groupName = dateKey + '_' + category;
-      categoryBlocks += '<div class="field"><div class="label">' + def.questionText + '</div><div class="options">';
-      def.options.forEach(function (o, idx) {
-        var id = groupName + '_' + idx;
-        var onchange = category === '予定'
-          ? ' onchange="onScheduleChange(\'' + dateKey + '\', this.value)"'
-          : '';
-        categoryBlocks += '<label class="opt"><input type="radio" name="' + groupName + '" value="' + o.value + '" id="' + id + '"' + onchange + '> ' + o.label + '</label>';
-      });
-      categoryBlocks += '</div></div>';
-    });
 
     var baitoBlock =
       '<div class="field" id="baito_' + dateKey + '" style="display:none;">' +
@@ -168,6 +155,30 @@ function renderForm() {
       '<input type="text" id="' + dateKey + '_scheduleOther" placeholder="具体的な予定を入力">' +
       '</div>';
 
+    var lunchHomeBlock =
+      '<div class="field" id="lunchHome_' + dateKey + '" style="display:none;">' +
+      '<div class="label">誰と食べますか？</div><div class="options">' +
+      '<label class="opt"><input type="radio" name="' + dateKey + '_昼食詳細" value="一緒に食べる"> 一緒</label>' +
+      '<label class="opt"><input type="radio" name="' + dateKey + '_昼食詳細" value="個別に食べる"> 個別</label>' +
+      '</div></div>';
+
+    var categoryBlocks = '';
+    CATEGORIES.forEach(function (category) {
+      var def = CATEGORY_DEFS[category];
+      var groupName = dateKey + '_' + category;
+      categoryBlocks += '<div class="field"><div class="label">' + def.questionText + '</div><div class="options">';
+      def.options.forEach(function (o, idx) {
+        var id = groupName + '_' + idx;
+        var onchange = '';
+        if (category === '予定') onchange = ' onchange="onScheduleChange(\'' + dateKey + '\', this.value)"';
+        else if (category === '昼食') onchange = ' onchange="onLunchChange(\'' + dateKey + '\', this.value)"';
+        categoryBlocks += '<label class="opt"><input type="radio" name="' + groupName + '" value="' + o.value + '" id="' + id + '"' + onchange + '> ' + o.label + '</label>';
+      });
+      categoryBlocks += '</div></div>';
+      if (category === '予定') categoryBlocks += baitoBlock + otherBlock;
+      if (category === '昼食') categoryBlocks += lunchHomeBlock;
+    });
+
     var pickupBlock =
       '<div class="field">' +
       '<div class="label">送迎の有無</div>' +
@@ -180,7 +191,7 @@ function renderForm() {
       '</div>';
 
     html += '<section class="date-block" id="dateBlock_' + dateKey + '"><h2>' + label + '</h2>' +
-      categoryBlocks + baitoBlock + otherBlock + pickupBlock + '</section>';
+      categoryBlocks + pickupBlock + '</section>';
   });
   document.getElementById('form').innerHTML = html;
 }
@@ -188,6 +199,10 @@ function renderForm() {
 function onScheduleChange(dateKey, value) {
   document.getElementById('baito_' + dateKey).style.display = (value === 'バイト') ? 'block' : 'none';
   document.getElementById('otherDetail_' + dateKey).style.display = (value === 'その他') ? 'block' : 'none';
+}
+
+function onLunchChange(dateKey, value) {
+  document.getElementById('lunchHome_' + dateKey).style.display = (value === '家') ? 'block' : 'none';
 }
 
 function onPickupToggle(dateKey, kind, checked) {
@@ -241,6 +256,10 @@ function submitAnswers() {
       if (cat === '予定' && v === 'その他') {
         var detail = sanitizeText(document.getElementById(dateKey + '_scheduleOther').value);
         if (detail) parts.push('予定詳細:' + detail);
+      }
+      if (cat === '昼食' && v === '家') {
+        var lunchDetail = selectedValue(dateKey + '_昼食詳細');
+        if (lunchDetail) parts.push('昼食詳細:' + lunchDetail);
       }
     });
     var dropoffCheck = document.getElementById(dateKey + '_dropoffCheck');
