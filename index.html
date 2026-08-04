@@ -38,8 +38,7 @@ var CATEGORY_DEFS = {
     options: [
       { label: '赤', value: 'はい(赤)' },
       { label: '橙', value: 'はい(オレンジ)' },
-      { label: 'どちらでも', value: 'はい(赤・オレンジどちらでも可)' },
-      { label: 'なし', value: 'いいえ' }
+      { label: '赤・橙', value: 'はい(赤・オレンジどちらでも可)' }
     ]
   },
   '予定': {
@@ -157,9 +156,10 @@ function renderForm() {
 
     var lunchHomeBlock =
       '<div class="field" id="lunchHome_' + dateKey + '" style="display:none;">' +
-      '<div class="label">誰と食べますか？</div><div class="options">' +
-      '<label class="opt"><input type="radio" name="' + dateKey + '_昼食詳細" value="一緒に食べる"> 一緒</label>' +
-      '<label class="opt"><input type="radio" name="' + dateKey + '_昼食詳細" value="個別に食べる"> 個別</label>' +
+      '<div class="label">タイミングは？</div><div class="options">' +
+      '<label class="opt"><input type="radio" name="' + dateKey + '_昼食詳細" value="早い"> 早い</label>' +
+      '<label class="opt"><input type="radio" name="' + dateKey + '_昼食詳細" value="共食"> 共食</label>' +
+      '<label class="opt"><input type="radio" name="' + dateKey + '_昼食詳細" value="遅い"> 遅い</label>' +
       '</div></div>';
 
     var categoryBlocks = '';
