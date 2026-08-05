@@ -38,7 +38,8 @@ var CATEGORY_DEFS = {
     options: [
       { label: '赤', value: 'はい(赤)' },
       { label: '橙', value: 'はい(オレンジ)' },
-      { label: '赤or橙', value: 'はい(赤・オレンジどちらでも可)' }
+      { label: '赤or橙', value: 'はい(赤・オレンジどちらでも可)' },
+      { label: '不要', value: '不要' }
     ]
   },
   '予定': {
@@ -185,6 +186,7 @@ function renderForm() {
       '<div class="options">' +
       '<label class="opt"><input type="checkbox" id="' + dateKey + '_dropoffCheck" onchange="onPickupToggle(\'' + dateKey + '\', \'dropoff\', this.checked)"> 送り</label>' +
       '<label class="opt"><input type="checkbox" id="' + dateKey + '_pickupCheck" onchange="onPickupToggle(\'' + dateKey + '\', \'pickup\', this.checked)"> 迎え</label>' +
+      '<label class="opt"><input type="checkbox" id="' + dateKey + '_pickupNoneCheck" onchange="onPickupNoneToggle(\'' + dateKey + '\', this.checked)"> 不要</label>' +
       '</div>' +
       '<div class="options" id="' + dateKey + '_dropoffTimeWrap" style="display:none;">送り時刻 <input type="time" id="' + dateKey + '_dropoffTimeInput"></div>' +
       '<div class="options" id="' + dateKey + '_pickupTimeWrap" style="display:none;">迎え時刻 <input type="time" id="' + dateKey + '_pickupTimeInput"></div>' +
@@ -207,6 +209,23 @@ function onLunchChange(dateKey, value) {
 
 function onPickupToggle(dateKey, kind, checked) {
   document.getElementById(dateKey + '_' + kind + 'TimeWrap').style.display = checked ? 'block' : 'none';
+  if (checked) {
+    // 送り・迎えのどちらかを選んだら「不要」は排他的に解除する
+    var noneCheck = document.getElementById(dateKey + '_pickupNoneCheck');
+    if (noneCheck.checked) noneCheck.checked = false;
+  }
+}
+
+// 「不要」を選んだら送り・迎えを排他的に解除し、時刻欄も隠す
+function onPickupNoneToggle(dateKey, checked) {
+  if (!checked) return;
+  ['dropoff', 'pickup'].forEach(function (kind) {
+    var check = document.getElementById(dateKey + '_' + kind + 'Check');
+    if (check.checked) {
+      check.checked = false;
+      document.getElementById(dateKey + '_' + kind + 'TimeWrap').style.display = 'none';
+    }
+  });
 }
 
 function selectedValue(name) {
@@ -264,13 +283,21 @@ function submitAnswers() {
     });
     var dropoffCheck = document.getElementById(dateKey + '_dropoffCheck');
     var pickupCheck = document.getElementById(dateKey + '_pickupCheck');
-    if (dropoffCheck && dropoffCheck.checked) {
-      var dt = document.getElementById(dateKey + '_dropoffTimeInput').value;
-      if (dt) parts.push('送り:' + dt);
-    }
-    if (pickupCheck && pickupCheck.checked) {
-      var pt = document.getElementById(dateKey + '_pickupTimeInput').value;
-      if (pt) parts.push('迎え:' + pt);
+    var pickupNoneCheck = document.getElementById(dateKey + '_pickupNoneCheck');
+    if (pickupNoneCheck && pickupNoneCheck.checked) {
+      // 送り・迎え両方の列に'不要'を記録する(既存の送り/迎えカテゴリを再利用し、
+      // 新しい列を追加しない。実際の時刻を送ればこの値は通常のupsertで上書きされる)
+      parts.push('送り:不要');
+      parts.push('迎え:不要');
+    } else {
+      if (dropoffCheck && dropoffCheck.checked) {
+        var dt = document.getElementById(dateKey + '_dropoffTimeInput').value;
+        if (dt) parts.push('送り:' + dt);
+      }
+      if (pickupCheck && pickupCheck.checked) {
+        var pt = document.getElementById(dateKey + '_pickupTimeInput').value;
+        if (pt) parts.push('迎え:' + pt);
+      }
     }
     if (parts.length > 0) lines.push('ANSWER|' + dateKey + '|' + parts.join('|'));
   });
