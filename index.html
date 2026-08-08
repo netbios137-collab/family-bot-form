@@ -103,17 +103,17 @@ function targetDates() {
   return keys;
 }
 
-// 現在のAsia/Tokyo時刻(日付+時+分)を取得する
+// 現在のAsia/Tokyo時刻(日付+時)を取得する
 function tokyoNowInfo() {
   var fmt = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', hour12: false
+    hour: '2-digit', hour12: false
   });
   var parts = fmt.formatToParts(new Date());
   var obj = {};
   parts.forEach(function (p) { if (p.type !== 'literal') obj[p.type] = p.value; });
   var hour = obj.hour === '24' ? 0 : Number(obj.hour);
-  return { dateKey: obj.year + '-' + obj.month + '-' + obj.day, hour: hour, minute: Number(obj.minute) };
+  return { dateKey: obj.year + '-' + obj.month + '-' + obj.day, hour: hour };
 }
 
 // dateKey(yyyy-MM-dd)に対して days日を加算した日付キーを返す
@@ -124,12 +124,12 @@ function addDaysToKey(dateKey, days) {
   return formatDateKey(dt);
 }
 
-// dateKeyの回答は、前日21:00のsendSummary()に間に合わせるため前日20:30が締切
+// dateKeyの回答は、前日20:00〜21:00のsendSummary()に間に合わせるため前日20:00が締切
 function isLocked(dateKey) {
   var now = tokyoNowInfo();
   var lockDateKey = addDaysToKey(dateKey, -1);
   if (now.dateKey > lockDateKey) return true;
-  if (now.dateKey === lockDateKey && (now.hour > 20 || (now.hour === 20 && now.minute >= 30))) return true;
+  if (now.dateKey === lockDateKey && now.hour >= 20) return true;
   return false;
 }
 
@@ -238,7 +238,7 @@ function sanitizeText(s) {
   return (s || '').replace(/[|\n\r]/g, ' ').trim();
 }
 
-// 前日20:30の締切を過ぎた日付ブロックの入力を無効化し、注意書きを表示する
+// 前日20:00の締切を過ぎた日付ブロックの入力を無効化し、注意書きを表示する
 function applyLocks() {
   DATE_KEYS.forEach(function (dateKey) {
     if (!isLocked(dateKey)) return;
@@ -249,7 +249,7 @@ function applyLocks() {
     for (var i = 0; i < inputs.length; i++) { inputs[i].disabled = true; }
     var notice = document.createElement('div');
     notice.className = 'lockNotice';
-    notice.textContent = '回答受付は終了しました（前日20:30の締切を過ぎました）';
+    notice.textContent = '回答受付は終了しました（前日20:00の締切を過ぎました）';
     block.insertBefore(notice, block.children[1]);
   });
 }
