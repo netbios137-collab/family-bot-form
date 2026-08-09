@@ -26,7 +26,7 @@ input[type="text"]{width:100%;}
 </style>
 </head>
 <body>
-<div id="form"></div>
+<div id="form">読み込み中...</div>
 <button id="submitBtn" onclick="submitAnswers()">回答を送信する</button>
 
 <script>
@@ -71,6 +71,13 @@ var CATEGORY_DEFS = {
   }
 };
 
+// 在宅の選択肢を仕事/休みに分岐させる対象者。「予定」カテゴリだけ、この表示名の
+// ログインユーザーに限り「在宅」の代わりに「在宅(仕事)」「在宅(休み)」を表示する
+// (詳細はcode.gs側のCATEGORY_DEFS.予定と対応。列は増やさず、同じ「予定」列に
+// 通常と異なる値が入る意図的な非対称のため、CATEGORY_DEFSの単純な同一性チェックでは
+// 検知できない差分であることに注意)
+var HOME_SPLIT_TARGET_NAME = 'よし';
+
 function tokyoTodayParts() {
   var fmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit' });
   var parts = fmt.formatToParts(new Date());
@@ -91,6 +98,14 @@ function formatDateLabel(dateKey) {
   var wdNames = ['日', '月', '火', '水', '木', '金', '土'];
   var dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
   return m + '/' + d + '(' + wdNames[dow] + ')';
+}
+
+// 土曜(6)・日曜(0)かどうかを判定する。弁当の選択肢を土日は表示しないために使う
+function isWeekend(dateKey) {
+  var p = dateKey.split('-');
+  var y = Number(p[0]), m = Number(p[1]), d = Number(p[2]);
+  var dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  return dow === 0 || dow === 6;
 }
 
 function targetDates() {
@@ -136,7 +151,7 @@ function isLocked(dateKey) {
 var DATE_KEYS = targetDates();
 var CATEGORIES = Object.keys(CATEGORY_DEFS);
 
-function renderForm() {
+function renderForm(displayName) {
   var html = '';
   DATE_KEYS.forEach(function (dateKey) {
     var label = formatDateLabel(dateKey);
@@ -161,14 +176,31 @@ function renderForm() {
       '<label class="opt"><input type="radio" name="' + dateKey + '_昼食詳細" value="早い"> 早い</label>' +
       '<label class="opt"><input type="radio" name="' + dateKey + '_昼食詳細" value="共食"> 共食</label>' +
       '<label class="opt"><input type="radio" name="' + dateKey + '_昼食詳細" value="遅い"> 遅い</label>' +
+      '<label class="opt"><input type="radio" name="' + dateKey + '_昼食詳細" value="個別"> 個別</label>' +
       '</div></div>';
 
     var categoryBlocks = '';
     CATEGORIES.forEach(function (category) {
       var def = CATEGORY_DEFS[category];
+      var options = def.options;
+      if (category === '予定' && displayName === HOME_SPLIT_TARGET_NAME) {
+        // よしだけ「在宅」を「在宅(仕事)」「在宅(休み)」の2択に差し替える
+        options = [];
+        def.options.forEach(function (o) {
+          if (o.value === '在宅') {
+            options.push({ label: '在宅(仕事)', value: '在宅(仕事)' });
+            options.push({ label: '在宅(休み)', value: '在宅(休み)' });
+          } else {
+            options.push(o);
+          }
+        });
+      } else if (category === '昼食' && isWeekend(dateKey)) {
+        // 弁当は土日は選べない
+        options = def.options.filter(function (o) { return o.value !== '弁当'; });
+      }
       var groupName = dateKey + '_' + category;
       categoryBlocks += '<div class="field"><div class="label">' + def.questionText + '</div><div class="options">';
-      def.options.forEach(function (o, idx) {
+      options.forEach(function (o, idx) {
         var id = groupName + '_' + idx;
         var onchange = '';
         if (category === '予定') onchange = ' onchange="onScheduleChange(\'' + dateKey + '\', this.value)"';
@@ -315,14 +347,22 @@ function submitAnswers() {
   });
 }
 
-renderForm();
-applyLocks();
-setInterval(applyLocks, 60000);
+function startForm(displayName) {
+  renderForm(displayName);
+  applyLocks();
+  setInterval(applyLocks, 60000);
+}
 
 liff.init({ liffId: LIFF_ID }).then(function () {
-  if (!liff.isLoggedIn()) { liff.login(); }
+  if (!liff.isLoggedIn()) { liff.login(); return; }
+  // 「予定」でよし専用の選択肢を出し分けるため、描画前にLIFFプロフィール(表示名)を取得する
+  return liff.getProfile().then(function (profile) {
+    startForm(profile.displayName);
+  });
 }).catch(function (err) {
   alert('LIFF初期化に失敗しました: ' + err);
+  // プロフィール取得に失敗した場合でも、通常の選択肢でフォーム自体は使えるようにする
+  startForm();
 });
 </script>
 </body>
